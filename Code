@@ -1,0 +1,64 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+from sklearn.metrics import silhouette_score
+
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras import regularizers
+
+# 1. Load and Prepare Dataset (You can replace with your customer data)
+from sklearn.datasets import make_blobs
+X, _ = make_blobs(n_samples=1000, centers=5, n_features=10, random_state=42)
+df = pd.DataFrame(X, columns=[f'Feature_{i}' for i in range(X.shape[1])])
+
+# 2. Normalize Data
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(df)
+
+# 3. Build Autoencoder
+input_dim = X_scaled.shape[1]
+encoding_dim = 5
+
+input_layer = Input(shape=(input_dim,))
+encoded = Dense(10, activation='relu')(input_layer)
+encoded = Dense(encoding_dim, activation='relu',
+                activity_regularizer=regularizers.l1(1e-5))(encoded)
+
+decoded = Dense(10, activation='relu')(encoded)
+decoded = Dense(input_dim, activation='linear')(decoded)
+
+autoencoder = Model(inputs=input_layer, outputs=decoded)
+encoder = Model(inputs=input_layer, outputs=encoded)
+
+autoencoder.compile(optimizer='adam', loss='mse')
+autoencoder.fit(X_scaled, X_scaled, epochs=50, batch_size=32, shuffle=True, verbose=0)
+
+# 4. Extract Deep Features
+deep_features = encoder.predict(X_scaled)
+
+# 5. Apply KMeans Clustering
+kmeans = KMeans(n_clusters=5, random_state=42)
+clusters = kmeans.fit_predict(deep_features)
+
+# 6. Evaluate Clustering
+silhouette = silhouette_score(deep_features, clusters)
+print(f"Silhouette Score: {silhouette:.4f}")
+
+# 7. Visualize with t-SNE
+tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+tsne_results = tsne.fit_transform(deep_features)
+
+plt.figure(figsize=(8,6))
+sns.scatterplot(x=tsne_results[:,0], y=tsne_results[:,1], hue=clusters, palette='Set2')
+plt.title('Deep Clustering Visualization (t-SNE)')
+plt.xlabel('TSNE-1')
+plt.ylabel('TSNE-2')
+plt.legend(title='Cluster')
+plt.grid(True)
+plt.show()
